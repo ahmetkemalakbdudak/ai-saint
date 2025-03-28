@@ -1,0 +1,15 @@
+0000000000000000000000000000000000000000 31ef42f6a3bcf8ec4730f5dfa8f84b762bb4b55e rektaka <rektaka@digitalspacedao.org> 1740950038 +0300	commit (initial): Initial Commit
+31ef42f6a3bcf8ec4730f5dfa8f84b762bb4b55e eb87a65b27cbb5c49c44b4cf495529787393e861 rektaka <rektaka@digitalspacedao.org> 1743086479 +0300	commit: Add Firebase Cloud Functions for chat and notifications
+eb87a65b27cbb5c49c44b4cf495529787393e861 0000000000000000000000000000000000000000 rektaka <rektaka@digitalspacedao.org> 1743086611 +0300	Branch: renamed refs/heads/main to refs/heads/main
+eb87a65b27cbb5c49c44b4cf495529787393e861 eb87a65b27cbb5c49c44b4cf495529787393e861 rektaka <rektaka@digitalspacedao.org> 1743086611 +0300	Branch: renamed refs/heads/main to refs/heads/main
+eb87a65b27cbb5c49c44b4cf495529787393e861 0000000000000000000000000000000000000000 rektaka <rektaka@digitalspacedao.org> 1743086768 +0300	Branch: renamed refs/heads/main to refs/heads/main
+eb87a65b27cbb5c49c44b4cf495529787393e861 eb87a65b27cbb5c49c44b4cf495529787393e861 rektaka <rektaka@digitalspacedao.org> 1743086768 +0300	Branch: renamed refs/heads/main to refs/heads/main
+eb87a65b27cbb5c49c44b4cf495529787393e861 17457e781b64924bb8aec7d8491f62ee6d4f23c3 rektaka <rektaka@digitalspacedao.org> 1743086806 +0300	commit: first commit
+17457e781b64924bb8aec7d8491f62ee6d4f23c3 0000000000000000000000000000000000000000 rektaka <rektaka@digitalspacedao.org> 1743086812 +0300	Branch: renamed refs/heads/main to refs/heads/main
+17457e781b64924bb8aec7d8491f62ee6d4f23c3 17457e781b64924bb8aec7d8491f62ee6d4f23c3 rektaka <rektaka@digitalspacedao.org> 1743086812 +0300	Branch: renamed refs/heads/main to refs/heads/main
+17457e781b64924bb8aec7d8491f62ee6d4f23c3 748edbf90406d1c9866a8e935f837a97567d3bf6 rektaka <rektaka@digitalspacedao.org> 1743086870 +0300	commit: Add Firebase Cloud Functions for chat and notifications
+748edbf90406d1c9866a8e935f837a97567d3bf6 2709db54b1c59f1c84ce25f6b06f38131d01008d rektaka <rektaka@digitalspacedao.org> 1743086917 +0300	commit: Remove node_modules from git
+2709db54b1c59f1c84ce25f6b06f38131d01008d 904cecb2c93dcaa3f9490d133a79cdac91a9d364 rektaka <rektaka@digitalspacedao.org> 1743086953 +0300	commit: Add .gitignore and Firebase Cloud Functions for chat and notifications (without node_modules)
+904cecb2c93dcaa3f9490d133a79cdac91a9d364 5b9689edcedbccb766853a665dc36e0a9e4cfaf0 rektaka <rektaka@digitalspacedao.org> 1743186761 +0300	commit: Added date categorization for chat history (Today, Yesterday, Last Week, Earlier) and fixed timezone handling
+5b9689edcedbccb766853a665dc36e0a9e4cfaf0 d1b24bc3bf02c63587c4f220e6498fd2451d2c17 rektaka <rektaka@digitalspacedao.org> 1743186772 +0300	pull --rebase origin main (start): checkout d1b24bc3bf02c63587c4f220e6498fd2451d2c17
+d1b24bc3bf02c63587c4f220e6498fd2451d2c17 5b9689edcedbccb766853a665dc36e0a9e4cfaf0 rektaka <rektaka@digitalspacedao.org> 1743186799 +0300	rebase (abort): updating HEAD

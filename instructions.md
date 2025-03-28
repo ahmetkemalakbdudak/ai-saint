@@ -1,0 +1,1 @@
+The name of the app is AI-Saint it is an app for aı conffession that uses llm api to simulate church priest user expreince and ı copied a template so chagne the uı first to keep religious theme 
