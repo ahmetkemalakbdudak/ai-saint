@@ -13,6 +13,12 @@ enum ChatHistorySection: String, CaseIterable, Identifiable {
     case earlier = "Earlier"
     
     var id: String { self.rawValue }
+    
+    // Add a computed property to return the localized string
+    var localizedTitle: String {
+        // Use the rawValue as the key for localization
+        return self.rawValue.localized
+    }
 }
 
 // Conversation with section info
@@ -489,8 +495,8 @@ struct SectionedChatHistory {
             }
         }
         
-        // Fallback title
-        return "New Conversation"
+        // Fallback title - now localized
+        return "newConversation".localized
     }
     
     // MARK: - Conversation Management

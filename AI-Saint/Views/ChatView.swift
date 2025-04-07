@@ -86,7 +86,7 @@ struct ChatView: View {
                         .foregroundColor(.primary)
                         .lineLimit(1)
                 } else {
-                    Text("New Chat")
+                    Text("newChat".localized)
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundColor(.primary)
                 }
@@ -202,19 +202,19 @@ struct ChatView: View {
                 inputTextField
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 12)
+            .padding(.vertical, 16)
             .padding(.bottom, 8) // Add bottom padding for spacing
         }
         .background(Color.white)
         .clipShape(RoundedCorners(tl: 24, tr: 24, bl: 0, br: 0))
-        .shadow(color: Color.black.opacity(0.15), radius: 8, x: 0, y: -3)
+        .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: -16)
         .edgesIgnoringSafeArea(.bottom) // Ensure input area extends to bottom edge
     }
     
     // MARK: - Input Text Field
     private var inputTextField: some View {
         ZStack(alignment: .trailing) {
-            TextField("Confess your thoughts...", text: $messageText, axis: .vertical)
+            TextField("confessThoughts".localized, text: $messageText, axis: .vertical)
                 .textFieldStyle(.plain)
                 .padding(.vertical, 10)
                 .padding(.horizontal, 16)
@@ -297,14 +297,14 @@ struct ChatView: View {
             showPaywall = true
         }) {
             VStack(spacing: 8) {
-                Text("Message limit reached")
+                Text("messageLimitReached".localized)
                     .font(.headline)
                     .foregroundColor(.white)
                 
                 HStack {
                     Image(systemName: "star.fill")
                         .font(.system(size: 20))
-                    Text("Upgrade to Premium for unlimited messages")
+                    Text("upgradeToPremium".localized)
                         .font(.subheadline)
                 }
                 .foregroundColor(.white)
@@ -340,22 +340,26 @@ struct ChatView: View {
             )
             .frame(width: 40, height: 64)
             
-            Text("Welcome to Digital Confession")
+            Text("welcomeToChat".localized)
                 .font(.headline)
             
-            Text("In the name of the Father, and of the Son, and of the Holy Spirit.")
+            Text("holySpirit".localized)
                 .font(.subheadline)
                 .foregroundColor(.gray)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
             
             VStack(spacing: 12) {
-                ForEach(["Bless me Father, for I have sinned", "I need guidance with a moral dilemma", "How can I seek forgiveness?"], id: \.self) { suggestion in
+                ForEach([
+                    "confessSuggestion1",
+                    "confessSuggestion2", 
+                    "confessSuggestion3"
+                ], id: \.self) { suggestionKey in
                     Button(action: {
-                        messageText = suggestion
+                        messageText = suggestionKey.localized
                         sendMessage()
                     }) {
-                        Text(suggestion)
+                        Text(suggestionKey.localized)
                             .padding(.vertical, 8)
                             .padding(.horizontal, 16)
                             .background(Color.blue.opacity(0.1))
@@ -395,7 +399,7 @@ struct MessageBubble: View {
                 Spacer()
                 Text(message.text)
                     .padding()
-                    .background(Color.white)
+                    .background(Color.gray.opacity(0.1))
                     .overlay(
                         RoundedRectangle(cornerRadius: 16)
                             .stroke(Color.gray.opacity(0.2), lineWidth: 1)
@@ -403,6 +407,9 @@ struct MessageBubble: View {
                     .foregroundColor(.primary)
                     .cornerRadius(16)
                     .textSelection(.enabled)
+                    .onAppear {
+                        print("[MessageBubble] User message bubble rendered with gray opacity 0.1")
+                    }
             } else {
                 VStack(alignment: .leading) {
                     HStack {
@@ -413,7 +420,7 @@ struct MessageBubble: View {
                         )
                         .frame(width: 16, height: 25)
                         
-                        Text("Priest")
+                        Text("priest".localized)
                             .font(.caption)
                             .foregroundColor(.gray)
                     }

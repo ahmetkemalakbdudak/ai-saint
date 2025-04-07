@@ -1,8 +1,10 @@
 import { initializeApp } from 'firebase-admin/app';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { onCall } from 'firebase-functions/v2/https';
+import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { defineSecret } from 'firebase-functions/params';
+import { getMessaging } from 'firebase-admin/messaging';
 
 // Define the Gemini API key secret with a different name to avoid conflicts
 const geminiSecretKey = defineSecret('GEMINI_SECRET_KEY');
@@ -18,6 +20,10 @@ console.log('🔥 Firebase Admin initialized', { appName: app.name });
 // Get Firestore instance
 const db = getFirestore();
 console.log('📊 Firestore initialized');
+
+// Get Messaging instance
+const messaging = getMessaging();
+console.log('📱 Firebase Messaging initialized');
 
 // Define conversation data interface for type safety
 interface ConversationData {
@@ -352,4 +358,392 @@ export const processChatMessageV2 = onCall({
         console.error('❌ Error processing message:', error);
         throw new Error('Failed to process message');
     }
-}); 
+});
+
+// Generate a spiritual quote using Gemini based on previous messages
+// Rule: The fewer lines of code is better
+async function generateSpiritualQuote(previousMessages: string[]): Promise<string> {
+    try {
+        // Debug log
+        console.log('🌟 Generating spiritual quote based on messages:', previousMessages.length > 0);
+        
+        // Get the API key using the defineSecret API
+        const apiKey = geminiSecretKey.value();
+        
+        if (!apiKey) {
+            console.error('❌ Gemini API key is not found');
+            throw new Error('API key not found');
+        }
+        
+        // Initialize Gemini
+        const genAI = new GoogleGenerativeAI(apiKey);
+        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-pro' });
+        
+        // Create prompt based on whether we have previous messages
+        let prompt = '';
+        
+        if (previousMessages && previousMessages.length > 0) {
+            // Create a prompt that incorporates user messages
+            prompt = `Based on these previous messages from a user of a spiritual app: "${previousMessages.join('" "')}",
+            create a short, uplifting spiritual quote or message (max 100 characters) that would be meaningful to them. 
+            The quote should be general enough to be appropriate as a daily notification. 
+            Include only the quote text without quotation marks or attribution.`;
+            
+            console.log('🌟 Creating personalized quote based on user messages');
+        } else {
+            // Generic prompt for users without message history
+            prompt = `Create a short, uplifting spiritual or biblical quote or message (max 100 characters) that would be 
+            meaningful to send as a daily notification to a user of a spiritual app.
+            Include only the quote text without quotation marks or attribution.`;
+            
+            console.log('🌟 Creating generic quote (no user messages available)');
+        }
+        
+        // Generate response using Gemini
+        console.log('🤖 Generating quote with Gemini...');
+        const result = await model.generateContent(prompt);
+        const quote = result.response.text().trim();
+        
+        // Ensure the quote isn't too long for a notification
+        const finalQuote = quote.length > 150 ? quote.substring(0, 147) + '...' : quote;
+        
+        console.log('✅ Generated quote:', finalQuote);
+        return finalQuote;
+    } catch (error) {
+        console.error('❌ Error generating quote:', error);
+        return "Reflect on your spiritual journey today. Each step brings you closer to understanding.";
+    }
+}
+
+// Rule: Always add debug logs
+// Scheduled Daily Quote Sender - Run once per hour
+export const scheduledDailyQuotes = onSchedule({
+    schedule: '0 * * * *', // Every hour at minute 0
+    region: 'us-central1',
+    secrets: [geminiSecretKey],
+    timeZone: 'UTC',
+}, async (event): Promise<void> => {
+    try {
+        // Debug log - clear and detailed execution start
+        console.log('⏰ [QUOTE JOB] Starting scheduled quotes job:', event.jobName, 'at', new Date().toISOString());
+        
+        // First get all users instead of querying devices directly
+        console.log('👥 [QUOTE JOB] Getting all users');
+        
+        try {
+            // Get all users
+            const usersSnapshot = await db.collection('users').get();
+            console.log(`👥 [QUOTE JOB] Found ${usersSnapshot.size} users in total`);
+            
+            if (usersSnapshot.empty) {
+                console.log('⚠️ [QUOTE JOB] No users found. Ending job.');
+                return;
+            }
+            
+            let totalDevicesProcessed = 0;
+            let successCount = 0;
+            let errorCount = 0;
+            let skippedDueToTimezone = 0;
+            
+            // The current UTC hour
+            const currentUtcHour = new Date().getUTCHours(); 
+            console.log(`⏰ [QUOTE JOB] Current UTC hour: ${currentUtcHour}`);
+            
+            // Process each user
+            for (const userDoc of usersSnapshot.docs) {
+                const userId = userDoc.id;
+                console.log(`👤 [QUOTE JOB] Processing user ${userId}`);
+                
+                try {
+                    // For each user, get their devices with notifications enabled
+                    const devicesSnapshot = await db.collection('users')
+                        .doc(userId)
+                        .collection('devices')
+                        .where('notificationsEnabled', '==', true)
+                        .get();
+                    
+                    if (devicesSnapshot.empty) {
+                        console.log(`📱 [QUOTE JOB] Skipping user ${userId} - no devices with notifications enabled`);
+                        continue;
+                    }
+                    
+                    // Process all devices to find valid timezone information
+                    const devices = devicesSnapshot.docs.map(doc => ({
+                        token: doc.id,
+                        path: doc.ref.path,
+                        timeZone: doc.data().timeZone,
+                        timeZoneOffset: doc.data().timeZoneOffset,
+                        lastNotified: doc.data().lastNotified || null
+                    }));
+                    
+                    if (devices.length === 0) {
+                        console.log(`📱 [QUOTE JOB] Skipping user ${userId} - no valid devices found`);
+                        continue;
+                    }
+                    
+                    console.log(`📱 [QUOTE JOB] Found ${devices.length} devices with notifications enabled for user ${userId}`);
+                    
+                    // Use the first device with valid timezone data to determine local time
+                    // Most users will have the same timezone for all their devices
+                    let userTimeZoneOffset = 0;
+                    let userLocalHour = currentUtcHour;
+                    
+                    // Try to find a device with timezone information
+                    const deviceWithTimezone = devices.find(d => d.timeZoneOffset !== undefined);
+                    if (deviceWithTimezone) {
+                        userTimeZoneOffset = deviceWithTimezone.timeZoneOffset || 0;
+                        userLocalHour = (currentUtcHour + userTimeZoneOffset + 24) % 24; // Ensure it's 0-23
+                        console.log(`⏰ [QUOTE JOB] User ${userId} timezone offset: ${userTimeZoneOffset}, local hour: ${userLocalHour}`);
+                    } else {
+                        console.log(`⏰ [QUOTE JOB] No timezone info for user ${userId}, using UTC`);
+                    }
+                    
+                    // Check if it's an appropriate time to send notification
+                    // Primary sending window: 7am-9am local time
+                    // Secondary window: 6pm-8pm local time
+                    const isPrimaryWindow = userLocalHour >= 7 && userLocalHour <= 9;
+                    const isSecondaryWindow = userLocalHour >= 18 && userLocalHour <= 20;
+                    
+                    // Add randomization - only send to ~50% of eligible users in each run to spread out notifications
+                    const shouldRandomize = Math.random() < 0.5;
+                    
+                    if (!isPrimaryWindow && !isSecondaryWindow) {
+                        console.log(`⏰ [QUOTE JOB] Skipping user ${userId} - outside notification windows (local hour: ${userLocalHour})`);
+                        skippedDueToTimezone++;
+                        continue;
+                    }
+                    
+                    if (shouldRandomize) {
+                        console.log(`⏰ [QUOTE JOB] Skipping user ${userId} - randomization (will try again next hour)`);
+                        skippedDueToTimezone++;
+                        continue;
+                    }
+                    
+                    // Check if we've already sent a notification today
+                    // Get today's date in user's timezone
+                    const now = new Date();
+                    const userDate = new Date(now.getTime() + userTimeZoneOffset * 3600000);
+                    const userToday = userDate.toISOString().split('T')[0]; // YYYY-MM-DD
+                    
+                    // Check if this user has received a notification today already
+                    // First check the latest record in dailyQuotes collection
+                    const todayQuotesSnapshot = await db.collection('users')
+                        .doc(userId)
+                        .collection('dailyQuotes')
+                        .where('sentVia', '==', 'notification')
+                        .orderBy('timestamp', 'desc')
+                        .limit(1)
+                        .get();
+                    
+                    let alreadySentToday = false;
+                    if (!todayQuotesSnapshot.empty) {
+                        const latestQuote = todayQuotesSnapshot.docs[0].data();
+                        if (latestQuote.timestamp) {
+                            const quoteDate = latestQuote.timestamp.toDate();
+                            const quoteDateStr = quoteDate.toISOString().split('T')[0]; // YYYY-MM-DD
+                            
+                            if (quoteDateStr === userToday) {
+                                console.log(`⏰ [QUOTE JOB] User ${userId} already received notification today at ${quoteDate.toISOString()}`);
+                                alreadySentToday = true;
+                            }
+                        }
+                    }
+                    
+                    if (alreadySentToday) {
+                        console.log(`⏰ [QUOTE JOB] Skipping user ${userId} - already sent notification today`);
+                        skippedDueToTimezone++;
+                        continue;
+                    }
+                    
+                    // At this point, we've decided to send a notification to this user
+                    console.log(`⏰ [QUOTE JOB] Sending notification to user ${userId} (local hour: ${userLocalHour})`);
+                    
+                    totalDevicesProcessed += devices.length;
+                    
+                    // Fetch user's chat history for personalization
+                    let userMessages: string[] = [];
+                    try {
+                        // Get most recent conversations
+                        const conversationsSnapshot = await db.collection('users')
+                            .doc(userId)
+                            .collection('conversations')
+                            .orderBy('lastUpdated', 'desc')
+                            .limit(3)
+                            .get();
+                        
+                        // Extract user messages from conversations
+                        for (const convoDoc of conversationsSnapshot.docs) {
+                            const convoData = convoDoc.data();
+                            if (convoData.messages && Array.isArray(convoData.messages)) {
+                                // Get only user messages, not assistant responses
+                                const messages = convoData.messages
+                                    .filter((msg: any) => msg.role === 'user' && msg.content)
+                                    .map((msg: any) => msg.content);
+                                userMessages = [...userMessages, ...messages];
+                            }
+                        }
+                        
+                        // Limit to 5 most recent messages to keep context manageable
+                        userMessages = userMessages.slice(0, 5);
+                        
+                        console.log(`💬 [QUOTE JOB] Found ${userMessages.length} messages for personalization for user ${userId}`);
+                    } catch (historyError) {
+                        console.error(`❌ [QUOTE JOB] Error fetching chat history for ${userId}:`, historyError);
+                        // Continue with empty messages array - will fall back to generic quote
+                    }
+                    
+                    // Generate a quote - simple default
+                    let quote = "May your day be filled with peace and spiritual connection.";
+                    
+                    try {
+                        // Generate quote based on chat history or default
+                        quote = await generateSpiritualQuote(userMessages);
+                        console.log(`✍️ [QUOTE JOB] Generated quote for user ${userId}: ${quote}`);
+                    } catch (quoteError) {
+                        console.error(`❌ [QUOTE JOB] Error generating quote for ${userId}:`, quoteError);
+                        // Continue with default quote
+                    }
+                    
+                    // Save quote to user's history
+                    let quoteId: string | null = null;
+                    try {
+                        const quoteRef = await userDoc.ref.collection('dailyQuotes').add({
+                            quote,
+                            timestamp: FieldValue.serverTimestamp(),
+                            sentVia: 'notification',
+                            isFavorite: false
+                        });
+                        quoteId = quoteRef.id;
+                        console.log(`💾 [QUOTE JOB] Saved quote to history for user ${userId}, id: ${quoteId}`);
+                    } catch (saveError) {
+                        console.error(`❌ [QUOTE JOB] Error saving quote to history for ${userId}:`, saveError);
+                        // Continue to notification - don't block notification on save error
+                    }
+                    
+                    // Send notifications to all user's devices individually
+                    console.log(`📤 [QUOTE JOB] Sending to ${devices.length} devices for user ${userId}`);
+                    
+                    // Process each device
+                    for (const device of devices) {
+                        try {
+                            // Reference to the device document
+                            const deviceRef = db.doc(device.path);
+                            
+                            // Atomically increment the badge count in Firestore
+                            console.log(`📊 [QUOTE JOB] Attempting to increment badge for device: ${device.token.substring(0, 10)}...`);
+                            await deviceRef.update({
+                                badgeCount: FieldValue.increment(1),
+                                lastNotified: FieldValue.serverTimestamp(),
+                                lastUpdated: FieldValue.serverTimestamp()
+                            });
+                            console.log(`✅ [QUOTE JOB] Atomically incremented badge count in Firestore.`);
+
+                            // Now, read the updated device document to get the new badge count
+                            let newBadgeCount = 1; // Default to 1 if read fails
+                            try {
+                                const updatedDeviceDoc = await deviceRef.get();
+                                if (updatedDeviceDoc.exists) {
+                                    newBadgeCount = updatedDeviceDoc.data()?.badgeCount || 1;
+                                    console.log(`📊 [QUOTE JOB] Read updated badge count: ${newBadgeCount}`);
+                                } else {
+                                     console.warn(`⚠️ [QUOTE JOB] Device doc not found after update for token: ${device.token.substring(0, 10)}...`);
+                                }
+                            } catch (readError) {
+                                console.error(`❌ [QUOTE JOB] Error reading updated badge count:`, readError);
+                                // Continue with default badge count 1
+                            }
+                            
+                            // Create message payload with the newly read badge count
+                            const message = {
+                                token: device.token,
+                                notification: {
+                                    title: 'Your Daily Spiritual Message',
+                                    body: quote,
+                                },
+                                data: {
+                                    type: 'daily_quote',
+                                    quote: quote,
+                                    source: 'scheduled',
+                                    timestamp: new Date().toISOString(),
+                                    quoteId: quoteId || '',
+                                    badgeCount: newBadgeCount.toString() // Use newly read count
+                                },
+                                // Critical for iOS background delivery
+                                apns: {
+                                    headers: {
+                                        'apns-priority': '10',  // High priority
+                                        'apns-push-type': 'alert'
+                                    },
+                                    payload: {
+                                        aps: {
+                                            'content-available': 1,
+                                            'sound': 'default',
+                                            'badge': newBadgeCount, // Use newly read count
+                                            'mutable-content': 1
+                                        }
+                                    }
+                                },
+                                // Android specific settings
+                                android: {
+                                    priority: 'high' as const,
+                                    notification: {
+                                        sound: 'default',
+                                        channelId: 'daily_quotes',
+                                        priority: 'high' as const,
+                                        defaultSound: true,
+                                        visibility: 'public' as const
+                                    }
+                                }
+                            };
+                            
+                            // Send the notification
+                            console.log(`📤 [QUOTE JOB] Sending to token: ${device.token.substring(0, 10)}...`);
+                            const messageId = await messaging.send(message);
+                            
+                            console.log(`✅ [QUOTE JOB] Successfully sent to device ${device.token.substring(0, 10)}..., messageId: ${messageId}`);
+                            successCount++;
+                        } catch (sendError: any) {
+                            console.error(`❌ [QUOTE JOB] Failed to send to device ${device.token.substring(0, 10)}...:`, 
+                                sendError.message || sendError);
+                            
+                            // Handle token not registered
+                            if (sendError.code === 'messaging/registration-token-not-registered') {
+                                console.log(`🧹 [QUOTE JOB] Removing invalid token: ${device.token.substring(0, 10)}...`);
+                                try {
+                                    // Delete the invalid device document
+                                    await db.doc(device.path).delete();
+                                    console.log(`🧹 [QUOTE JOB] Successfully removed invalid token document`);
+                                } catch (deleteError) {
+                                    console.error(`❌ [QUOTE JOB] Error deleting invalid token:`, deleteError);
+                                }
+                            }
+                            
+                            errorCount++;
+                        }
+                    }
+                    
+                    console.log(`📊 [QUOTE JOB] Completed processing user ${userId}`);
+                    
+                } catch (userError) {
+                    console.error(`❌ [QUOTE JOB] Error processing user ${userId}:`, userError);
+                    // Continue with next user
+                }
+            }
+            
+            console.log('✅ [QUOTE JOB] Completed scheduled quotes job:', {
+                usersProcessed: usersSnapshot.size,
+                totalDevices: totalDevicesProcessed,
+                successfulNotifications: successCount,
+                failedNotifications: errorCount,
+                skippedDueToTimezone: skippedDueToTimezone
+            });
+            
+        } catch (queryError) {
+            console.error('❌ [QUOTE JOB] Error querying users:', queryError);
+            throw queryError;
+        }
+    } catch (error) {
+        console.error('❌ [QUOTE JOB] Fatal error in scheduled job:', error);
+        throw error;
+    }
+});
